@@ -1,27 +1,27 @@
 import logging
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackContext, CallbackQueryHandler, MessageHandler, filters
 
 # Configura el logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Token de tu bot de Telegram
-TOKEN = '7878507254:AAGZ4i6ZPAnQKqBH4qAO2n-XCMU6Dl5E-Us'
+TOKEN = 'TU_TOKEN_DE_TELEGRAM_BOT'
 
 # Función para manejar el comando /start
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text('¡Hola! Envíame el enlace de un video de YouTube y te enviaré la música.')
+async def start(update: Update, context: CallbackContext) -> None:
+    await update.message.reply_text('¡Hola! Envíame el enlace de un video de YouTube y te enviaré la música.')
 
 # Función para manejar el enlace de YouTube
-def handle_youtube_link(update: Update, context: CallbackContext) -> None:
+async def handle_youtube_link(update: Update, context: CallbackContext) -> None:
     # Obtener el enlace de YouTube del mensaje
     youtube_url = update.message.text
 
     # Verificar si el enlace es válido
     if "youtube.com/watch?v=" not in youtube_url:
-        update.message.reply_text("Por favor, envía un enlace válido de YouTube.")
+        await update.message.reply_text("Por favor, envía un enlace válido de YouTube.")
         return
 
     # Guardar el enlace en el contexto para usarlo después
@@ -42,16 +42,16 @@ def handle_youtube_link(update: Update, context: CallbackContext) -> None:
                 keyboard.append([InlineKeyboardButton(quality, callback_data=callback_data)])
 
             reply_markup = InlineKeyboardMarkup(keyboard)
-            update.message.reply_text("Elige la calidad del audio:", reply_markup=reply_markup)
+            await update.message.reply_text("Elige la calidad del audio:", reply_markup=reply_markup)
         else:
-            update.message.reply_text("No se pudo obtener la música del enlace proporcionado.")
+            await update.message.reply_text("No se pudo obtener la música del enlace proporcionado.")
     else:
-        update.message.reply_text("Error al conectarse con la API.")
+        await update.message.reply_text("Error al conectarse con la API.")
 
 # Función para manejar la selección de calidad
-def handle_quality_selection(update: Update, context: CallbackContext) -> None:
+async def handle_quality_selection(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
-    query.answer()
+    await query.answer()
 
     # Obtener la calidad seleccionada
     quality = query.data.replace("quality_", "")
@@ -59,7 +59,7 @@ def handle_quality_selection(update: Update, context: CallbackContext) -> None:
     # Obtener el enlace de YouTube guardado en el contexto
     youtube_url = context.user_data.get('youtube_url')
     if not youtube_url:
-        query.edit_message_text("Error: No se encontró el enlace de YouTube.")
+        await query.edit_message_text("Error: No se encontró el enlace de YouTube.")
         return
 
     # Llamar a la API para obtener el enlace de descarga
@@ -83,37 +83,29 @@ def handle_quality_selection(update: Update, context: CallbackContext) -> None:
                 audio_response = requests.get(download_url)
                 if audio_response.status_code == 200:
                     # Enviar el archivo de audio al usuario
-                    query.edit_message_text(f"Descargando {title} en {quality}...")
-                    context.bot.send_audio(chat_id=query.message.chat_id, audio=audio_response.content, title=title)
+                    await query.edit_message_text(f"Descargando {title} en {quality}...")
+                    await context.bot.send_audio(chat_id=query.message.chat_id, audio=audio_response.content, title=title)
                 else:
-                    query.edit_message_text("No se pudo descargar el archivo de audio.")
+                    await query.edit_message_text("No se pudo descargar el archivo de audio.")
             else:
-                query.edit_message_text(f"No se encontró la calidad {quality}.")
+                await query.edit_message_text(f"No se encontró la calidad {quality}.")
         else:
-            query.edit_message_text("No se pudo obtener la música del enlace proporcionado.")
+            await query.edit_message_text("No se pudo obtener la música del enlace proporcionado.")
     else:
-        query.edit_message_text("Error al conectarse con la API.")
+        await query.edit_message_text("Error al conectarse con la API.")
 
 def main() -> None:
-    # Crear el Updater y pasarle el token de tu bot
-    updater = Updater(TOKEN)
-
-    # Obtener el dispatcher para registrar los handlers
-    dispatcher = updater.dispatcher
+    # Crear la aplicación
+    application = ApplicationBuilder().token(TOKEN).build()
 
     # Registrar los comandos y manejadores
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("download", handle_youtube_link))
-    dispatcher.add_handler(CallbackQueryHandler(handle_quality_selection))
-
-    # Manejar enlaces de YouTube enviados por el usuario
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_youtube_link))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("download", handle_youtube_link))
+    application.add_handler(CallbackQueryHandler(handle_quality_selection))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_youtube_link))
 
     # Iniciar el bot
-    updater.start_polling()
-
-    # Mantener el bot en ejecución hasta que se presione Ctrl+C
-    updater.idle()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
